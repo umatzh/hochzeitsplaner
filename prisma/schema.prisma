@@ -1,0 +1,379 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ===== AUTHENTICATION =====
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  role          String    @default("PLANNER")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  events        Event[]   @relation("EventOwner")
+  sharedEvents  EventShare[]
+}
+
+// ===== EBENE 1: TOP-LEVEL EVENT =====
+model Event {
+  id          String    @id @default(cuid())
+  name        String
+  eventType   String    // WEDDING, BIRTHDAY, CORPORATE, PARTY, UNIVERSITY, WEDDING_SERIES, SPORTS, FESTIVAL, WEDDING_PLANNER, CUSTOM
+  mainDate    DateTime
+  location    String?
+  description String?
+  totalBudget Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  ownerId     String
+  owner       User      @relation("EventOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  shares      EventShare[]
+  eventItems  EventItem[]
+  masterGuests MasterGuest[]
+}
+
+model EventShare {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String
+  role      String   @default("VIEWER") // ADMIN, ORGANIZER, HELPER, VIEWER
+  canEdit   Boolean  @default(false)
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+// ===== EBENE 2: SUB-EVENTS =====
+model EventItem {
+  id          String    @id @default(cuid())
+  eventId     String
+  name        String
+  itemType    String    // MAIN_EVENT, CIVIL_CEREMONY, PARTY, BRUNCH, MEETING, CONFERENCE, TEAM_BUILDING, DINNER, CUSTOM
+  date        DateTime
+  time        String?
+  endTime     String?
+  location    String?
+  budget      Float     @default(0)
+  guestCount  Int       @default(0)
+  status      String    @default("PLANNING") // PLANNING, CONFIRMED, COMPLETED, CANCELLED
+  notes       String?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  modules     EventModule[]
+
+  // All module data linked to this sub-event
+  guests          Guest[]
+  budgetItems     BudgetItem[]
+  vendors         Vendor[]
+  offers          Offer[]
+  todos           Todo[]
+  shoppingItems   ShoppingItem[]
+  timelineItems   TimelineItem[]
+  contacts        Contact[]
+  menuItems       MenuItem[]
+  personnel       Personnel[]
+  shiftAssignments ShiftAssignment[]
+  payrollItems    PayrollItem[]
+  taskAssignments TaskAssignment[]
+}
+
+// ===== EBENE 3: MODULE CONFIGURATION =====
+model EventModule {
+  id          String    @id @default(cuid())
+  eventItemId String
+  moduleName  String    // dashboard, guests, budget, offers, todos, shopping, timeline, contacts, menu, personnel, shifts, payroll, tasks
+  isActive    Boolean   @default(true)
+  settings    String?   // JSON string for module-specific settings
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  eventItem   EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+
+  @@unique([eventItemId, moduleName])
+}
+
+// ===== MASTER GUEST LIST (Event Level) =====
+model MasterGuest {
+  id          String   @id @default(cuid())
+  eventId     String
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 2: GÄSTELISTE (per Sub-Event) =====
+model Guest {
+  id               String   @id @default(cuid())
+  eventItemId      String
+  name             String
+  companion        String?
+  child1Name       String?
+  child2Name       String?
+  priority         String   @default("MEDIUM")
+  invitationStatus String   @default("NOT_SENT")
+  rsvpStatus       String   @default("PENDING")
+  menuType         String   @default("REGULAR")
+  allergies        String?
+  tableNumber      Int?
+  notes            String?
+  email            String?
+  phone            String?
+  address          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  eventItem        EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 3: BUDGET-VERWALTUNG =====
+model BudgetItem {
+  id           String   @id @default(cuid())
+  eventItemId  String
+  category     String
+  item         String
+  vendor       String?
+  quantity     Int      @default(1)
+  unitPrice    Float    @default(0)
+  totalPrice   Float    @default(0)
+  offerLink    String?
+  paid         Float    @default(0)
+  dueDate      DateTime?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  eventItem    EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 4: OFFERTEN-MANAGEMENT =====
+model Vendor {
+  id          String   @id @default(cuid())
+  eventItemId String
+  name        String
+  category    String
+  contactName String?
+  phone       String?
+  email       String?
+  website     String?
+  address     String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  eventItem   EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+  offers      Offer[]
+}
+
+model Offer {
+  id           String   @id @default(cuid())
+  eventItemId  String
+  vendorId     String?
+  category     String
+  vendorName   String
+  contactName  String?
+  phone        String?
+  email        String?
+  amount       Float    @default(0)
+  status       String   @default("OPEN")
+  requestedAt  DateTime?
+  validUntil   DateTime?
+  isFavorite   Boolean  @default(false)
+  notes        String?
+  documentUrl  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  eventItem    EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+  vendor       Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+}
+
+// ===== MODULE 5: TODO-LISTE =====
+model Todo {
+  id           String   @id @default(cuid())
+  eventItemId  String
+  category     String
+  task         String
+  responsible  String?
+  dueDate      DateTime?
+  status       String   @default("OPEN")
+  priority     String   @default("MEDIUM")
+  notes        String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  eventItem    EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 6: EINKAUFSLISTE =====
+model ShoppingItem {
+  id             String   @id @default(cuid())
+  eventItemId    String
+  item           String
+  store          String
+  quantity       Int      @default(1)
+  estimatedPrice Float    @default(0)
+  purchased      Boolean  @default(false)
+  actualPrice    Float?
+  notes          String?
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  eventItem      EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 7: ZEITPLAN =====
+model TimelineItem {
+  id           String   @id @default(cuid())
+  eventItemId  String
+  time         String
+  activity     String
+  responsible  String?
+  status       String   @default("PENDING")
+  isEmergency  Boolean  @default(false)
+  notes        String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  eventItem    EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 8: KONTAKTE =====
+model Contact {
+  id          String   @id @default(cuid())
+  eventItemId String
+  name        String
+  company     String?
+  phone       String?
+  email       String?
+  address     String?
+  website     String?
+  role        String?
+  notes       String?
+  isEmergency Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  eventItem   EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 9: MENÜPLANUNG =====
+model MenuItem {
+  id                    String   @id @default(cuid())
+  eventItemId           String
+  course                String
+  name                  String
+  ingredients           String?
+  portionSize           String?
+  allergens             String?
+  vegetarianAlternative String?
+  preparationNotes      String?
+  timing                String?
+  servings              Int      @default(0)
+  notes                 String?
+  sortOrder             Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  eventItem             EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 10: PERSONAL-VERWALTUNG =====
+model Personnel {
+  id           String   @id @default(cuid())
+  eventItemId  String
+  personnelId  String
+  name         String
+  role         String
+  phone        String?
+  email        String?
+  hourlyRate   Float    @default(0)
+  availability String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  eventItem    EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+  shifts       ShiftAssignment[]
+  payroll      PayrollItem?
+  tasks        TaskAssignment[]
+
+  @@unique([eventItemId, personnelId])
+}
+
+// ===== MODULE 11: EINSATZPLANUNG =====
+model ShiftAssignment {
+  id          String    @id @default(cuid())
+  eventItemId String
+  personnelId String
+  timeSlot    String
+  role        String
+  isAssigned  Boolean   @default(true)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  eventItem   EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+
+  @@unique([eventItemId, personnelId, timeSlot, role])
+}
+
+// ===== MODULE 12: STUNDENABRECHNUNG =====
+model PayrollItem {
+  id            String    @id @default(cuid())
+  eventItemId   String
+  personnelId   String    @unique
+  plannedHours  Float     @default(0)
+  actualHours   Float     @default(0)
+  hourlyRate    Float     @default(0)
+  grossPay      Float     @default(0)
+  deductions    Float     @default(0)
+  netPay        Float     @default(0)
+  isPaid        Boolean   @default(false)
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  eventItem     EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+  personnel     Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+}
+
+// ===== MODULE 13: AUFGABENVERTEILUNG =====
+model TaskAssignment {
+  id               String   @id @default(cuid())
+  eventItemId      String
+  area             String
+  task             String
+  mainResponsible  String?
+  supportPersonnel String?
+  timing           String?
+  status           String   @default("OPEN")
+  notes            String?
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  eventItem        EventItem @relation(fields: [eventItemId], references: [id], onDelete: Cascade)
+  personnel        Personnel? @relation(fields: [mainResponsible], references: [id], onDelete: SetNull)
+}
